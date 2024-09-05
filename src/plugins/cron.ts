@@ -1,6 +1,6 @@
 import fp from 'fastify-plugin';
 import TransactionProcessor from '../services/transaction';
-import cron from 'fastify-cron';
+import cron, { Params as CronJobParams } from 'fastify-cron';
 import { Env } from '../env';
 import Unlocker from '../services/unlocker';
 import RgbppCollector from '../services/rgbpp';
@@ -8,6 +8,7 @@ import UTXOSyncer from '../services/utxo';
 
 export default fp(async (fastify) => {
   try {
+    const cronJobs: CronJobParams[] = [];
     const env: Env = fastify.container.resolve('env');
 
     const getSentryCheckIn = (monitorSlug: string, crontab: string) => {
@@ -79,6 +80,7 @@ export default fp(async (fastify) => {
         });
       },
     };
+    cronJobs.push(retryMissingTransactionsJob);
 
     if (env.UTXO_SYNC_DATA_CACHE_ENABLE) {
       const utxoSyncer: UTXOSyncer = fastify.container.resolve('utxoSyncer');
@@ -120,29 +122,32 @@ export default fp(async (fastify) => {
     }
 
     // processing unlock BTC_TIME_LOCK cells
-    const unlocker: Unlocker = fastify.container.resolve('unlocker');
-    const monitorSlug = env.UNLOCKER_MONITOR_SLUG;
-    const unlockBTCTimeLockCellsJob = {
-      name: monitorSlug,
-      cronTime: env.UNLOCKER_CRON_SCHEDULE,
-      onTick: async () => {
-        fastify.Sentry.startSpan({ op: 'cron', name: monitorSlug }, async () => {
-          const { name, cronTime } = unlockBTCTimeLockCellsJob;
-          const checkIn = getSentryCheckIn(name, cronTime);
-          try {
-            await unlocker.unlockCells();
-            checkIn.ok();
-          } catch (err) {
-            checkIn.error();
-            fastify.log.error(err);
-            fastify.Sentry.captureException(err);
-          }
-        });
-      },
-    };
+    if (env.UNLOCKER_CRON_TASK_ENABLE) {
+      const unlocker: Unlocker = fastify.container.resolve('unlocker');
+      const monitorSlug = env.UNLOCKER_MONITOR_SLUG;
+      const unlockBTCTimeLockCellsJob = {
+        name: monitorSlug,
+        cronTime: env.UNLOCKER_CRON_SCHEDULE,
+        onTick: async () => {
+          fastify.Sentry.startSpan({ op: 'cron', name: monitorSlug }, async () => {
+            const { name, cronTime } = unlockBTCTimeLockCellsJob;
+            const checkIn = getSentryCheckIn(name, cronTime);
+            try {
+              await unlocker.unlockCells();
+              checkIn.ok();
+            } catch (err) {
+              checkIn.error();
+              fastify.log.error(err);
+              fastify.Sentry.captureException(err);
+            }
+          });
+        },
+      };
+      cronJobs.push(unlockBTCTimeLockCellsJob);
+    }
 
     fastify.register(cron, {
-      jobs: [retryMissingTransactionsJob, unlockBTCTimeLockCellsJob],
+      jobs: cronJobs,
     });
   } catch (err) {
     fastify.log.error(err);

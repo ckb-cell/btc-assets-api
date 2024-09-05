@@ -16,7 +16,7 @@ const envToLogger = {
           },
         }
       : {}),
-    level: env.LOGGER_LEVEL ?? 'debug',
+    level: 'debug',
   },
   production: {
     level: env.LOGGER_LEVEL ?? 'info',

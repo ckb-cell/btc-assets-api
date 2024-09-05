@@ -27,36 +27,44 @@ import { ZodAny } from 'zod';
 
 async function routes(fastify: FastifyInstance) {
   fastify.log.info(`Process env: ${JSON.stringify(getSafeEnvs(), null, 2)}`);
+  const env = container.resolve('env');
 
-  await fastify.register(cors);
   await fastify.register(sentry);
   fastify.register(sensible);
   fastify.register(compress);
-  fastify.register(swagger);
-  fastify.register(jwt);
-  fastify.register(ipBlock);
-  fastify.register(cache);
-  fastify.register(rateLimit);
-  fastify.register(healthcheck);
 
-  const env = container.resolve('env');
   await container.resolve('bitcoin').checkNetwork(env.NETWORK as NetworkType);
 
-  fastify.register(internalRoutes, { prefix: '/internal' });
-  fastify.register(tokenRoutes, { prefix: '/token' });
-  fastify.register(bitcoinRoutes, { prefix: '/bitcoin/v1' });
-  fastify.register(rgbppRoutes, { prefix: '/rgbpp/v1' });
+  fastify.log.info(`Application mode: ${env.APP_MODE}`);
+  if (['full', 'api'].includes(env.APP_MODE)) {
+    await fastify.register(cors);
+    fastify.register(swagger);
+    fastify.register(jwt);
+    fastify.register(ipBlock);
+    fastify.register(cache);
+    fastify.register(rateLimit);
+    fastify.register(healthcheck);
 
-  // register cron routes only on Vercel
-  if (provider === 'vercel' || env.NODE_ENV === 'test') {
-    fastify.log.info('Cron routes is registered');
-    fastify.register(cronRoutes, { prefix: '/cron' });
-  } else {
-    fastify.log.info('Cron plugin is registered');
-    await fastify.register(cron);
-    fastify.addHook('onReady', () => {
-      fastify.cron.startAllJobs();
-    });
+    fastify.register(internalRoutes, { prefix: '/internal' });
+    fastify.register(tokenRoutes, { prefix: '/token' });
+    fastify.register(bitcoinRoutes, { prefix: '/bitcoin/v1' });
+    fastify.register(rgbppRoutes, { prefix: '/rgbpp/v1' });
+
+    fastify.log.info('Routes are registered');
+  }
+
+  if (['full', 'background'].includes(env.APP_MODE)) {
+    // register cron routes only on Vercel
+    if (provider === 'vercel' || env.NODE_ENV === 'test') {
+      fastify.register(cronRoutes, { prefix: '/cron' });
+      fastify.log.info('Cron routes is registered');
+    } else {
+      await fastify.register(cron);
+      fastify.addHook('onReady', () => {
+        fastify.cron.startAllJobs();
+      });
+      fastify.log.info('Cron plugin is registered');
+    }
   }
 }
 

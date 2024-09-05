@@ -77,6 +77,14 @@ const envSchema = z
       .pipe(z.string().array()),
 
     /**
+     * Application Mode
+     * - full: Full application mode, includes API and background tasks.
+     * - api_only: API only mode, excludes background tasks.
+     * - background_only: Background tasks only mode, excludes API.
+     */
+    APP_MODE: z.enum(['full', 'api', 'background']).default('full'),
+
+    /**
      * Bitcoin SPV service URL
      * https://github.com/ckb-cell/ckb-bitcoin-spv-service
      */
@@ -135,6 +143,14 @@ const envSchema = z
      */
     PAYMASTER_BTC_CONTAINER_FEE_SATS: z.coerce.number().default(7000),
 
+    /**
+     * Enable BTCTimeLock cell unlock cron task
+     * set to false to disable the BTCTimeLock cell unlock cron task
+     */
+    UNLOCKER_CRON_TASK_ENABLE: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((value) => value === 'true'),
     /**
      * BTCTimeLock cell unlock batch size
      */
